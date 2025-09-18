@@ -2,6 +2,7 @@ import express from "express";
 import nodemailer from "nodemailer";
 import dotenv from "dotenv";
 import cors from "cors";
+import fs from "fs";
 
 dotenv.config();
 const app = express();
@@ -24,14 +25,25 @@ transporter.verify((err, success) => {
   else console.log("SMTP Connected Successfully!");
 });
 
-// 🔹 In-memory pending requests
-let pendingRequests = [];
+// 🔹 Helper functions to read/write JSON
+const filePath = "./pendingRequests.json";
+
+const readRequests = () => {
+  const data = fs.readFileSync(filePath, "utf8");
+  return JSON.parse(data);
+};
+
+const writeRequests = (requests) => {
+  fs.writeFileSync(filePath, JSON.stringify(requests, null, 2));
+};
 
 // 🔹 Visitor submits request
 app.post("/request-resume", async (req, res) => {
   const { name, email } = req.body;
-  const id = Date.now(); // unique ID for request
+  const id = Date.now(); // unique ID
+  const pendingRequests = readRequests();
   pendingRequests.push({ id, name, email });
+  writeRequests(pendingRequests);
 
   const adminEmail = process.env.ADMIN_EMAIL;
   const acceptLink = `${process.env.BACKEND_URL}/accept/${id}`;
@@ -60,7 +72,9 @@ app.post("/request-resume", async (req, res) => {
 // 🔹 Accept request → send resume
 app.get("/accept/:id", async (req, res) => {
   const id = parseInt(req.params.id);
+  let pendingRequests = readRequests();
   const request = pendingRequests.find((r) => r.id === id);
+
   if (!request) return res.send("Request not found or already processed");
 
   try {
@@ -79,6 +93,7 @@ app.get("/accept/:id", async (req, res) => {
 
     // Remove processed request
     pendingRequests = pendingRequests.filter((r) => r.id !== id);
+    writeRequests(pendingRequests);
     res.send("✅ Resume sent to visitor successfully!");
   } catch (err) {
     console.error(err);
@@ -89,23 +104,24 @@ app.get("/accept/:id", async (req, res) => {
 // 🔹 Reject request → notify visitor
 app.get("/reject/:id", async (req, res) => {
   const id = parseInt(req.params.id);
+  let pendingRequests = readRequests();
   const request = pendingRequests.find((r) => r.id === id);
+
   if (!request) return res.send("Request not found or already processed");
 
   try {
-    // Send rejection email to visitor
     await transporter.sendMail({
       from: `"Sufiyan Khan" <${process.env.VERIFIED_EMAIL}>`,
       to: request.email,
       subject: "Resume Request Update",
-      text: `Hello ${request.name}, Unfortunately, your request for my resume was rejected.`,
       html: `<p>Hello <b>${request.name}</b>,</p>
-         <p>Unfortunately, your request for my resume was rejected.</p>
-         <p>Thanks for your interest!</p>`,
+             <p>Unfortunately, your request for my resume was rejected.</p>
+             <p>Thanks for your interest!</p>`,
     });
 
     // Remove processed request
     pendingRequests = pendingRequests.filter((r) => r.id !== id);
+    writeRequests(pendingRequests);
     res.send("❌ Resume request rejected and visitor notified.");
   } catch (err) {
     console.error(err);
@@ -115,6 +131,7 @@ app.get("/reject/:id", async (req, res) => {
 
 // 🔹 Pending requests API
 app.get("/pending-requests", (req, res) => {
+  const pendingRequests = readRequests();
   res.json(pendingRequests);
 });
 
