@@ -3,6 +3,7 @@ import nodemailer from "nodemailer";
 import dotenv from "dotenv";
 import cors from "cors";
 import fs from "fs";
+import path from "path";
 
 dotenv.config();
 const app = express();
@@ -25,16 +26,26 @@ transporter.verify((err, success) => {
   else console.log("SMTP Connected Successfully!");
 });
 
-// 🔹 Helper functions to read/write JSON
-const filePath = "./pendingRequests.json";
+// 🔹 File to store pending requests
+const filePath = path.join(process.cwd(), "pendingRequests.json");
 
+// 🔹 Helper functions
 const readRequests = () => {
-  const data = fs.readFileSync(filePath, "utf8");
-  return JSON.parse(data);
+  try {
+    const data = fs.readFileSync(filePath, "utf8");
+    return JSON.parse(data || "[]");
+  } catch (err) {
+    console.error("Error reading requests:", err);
+    return [];
+  }
 };
 
 const writeRequests = (requests) => {
-  fs.writeFileSync(filePath, JSON.stringify(requests, null, 2));
+  try {
+    fs.writeFileSync(filePath, JSON.stringify(requests, null, 2));
+  } catch (err) {
+    console.error("Error writing requests:", err);
+  }
 };
 
 // 🔹 Visitor submits request
@@ -86,7 +97,7 @@ app.get("/accept/:id", async (req, res) => {
       attachments: [
         {
           filename: "Sufiyan_KhanResume.pdf",
-          path: "./Sufiyan_KhanResume.pdf",
+          path: path.join(process.cwd(), "Sufiyan_KhanResume.pdf"),
         },
       ],
     });
