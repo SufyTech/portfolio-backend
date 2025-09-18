@@ -2,7 +2,6 @@ import express from "express";
 import nodemailer from "nodemailer";
 import dotenv from "dotenv";
 import cors from "cors";
-import fs from "fs";
 import path from "path";
 
 dotenv.config();
@@ -26,35 +25,14 @@ transporter.verify((err, success) => {
   else console.log("SMTP Connected Successfully!");
 });
 
-// 🔹 File to store pending requests
-const filePath = path.join(process.cwd(), "pendingRequests.json");
-
-// 🔹 Helper functions
-const readRequests = () => {
-  try {
-    const data = fs.readFileSync(filePath, "utf8");
-    return JSON.parse(data || "[]");
-  } catch (err) {
-    console.error("Error reading requests:", err);
-    return [];
-  }
-};
-
-const writeRequests = (requests) => {
-  try {
-    fs.writeFileSync(filePath, JSON.stringify(requests, null, 2));
-  } catch (err) {
-    console.error("Error writing requests:", err);
-  }
-};
+// 🔹 Store pending requests in memory
+let pendingRequests = [];
 
 // 🔹 Visitor submits request
 app.post("/request-resume", async (req, res) => {
   const { name, email } = req.body;
-  const id = Date.now(); // unique ID
-  const pendingRequests = readRequests();
+  const id = Date.now();
   pendingRequests.push({ id, name, email });
-  writeRequests(pendingRequests);
 
   const adminEmail = process.env.ADMIN_EMAIL;
   const acceptLink = `${process.env.BACKEND_URL}/accept/${id}`;
@@ -68,12 +46,11 @@ app.post("/request-resume", async (req, res) => {
       html: `
         <p><b>Visitor Name:</b> ${name}</p>
         <p><b>Email:</b> ${email}</p>
-        <p>To <b>ACCEPT</b> the request, click: <a href="${acceptLink}">ACCEPT</a></p>
-        <p>To <b>REJECT</b> the request, click: <a href="${rejectLink}">REJECT</a></p>
+        <p><a href="${acceptLink}">ACCEPT</a> | <a href="${rejectLink}">REJECT</a></p>
       `,
     });
 
-    res.status(200).json({ message: "Request submitted successfully!" });
+    res.json({ message: "Request submitted successfully!" });
   } catch (err) {
     console.error(err);
     res.status(500).json({ message: "Error sending email to admin" });
@@ -83,9 +60,7 @@ app.post("/request-resume", async (req, res) => {
 // 🔹 Accept request → send resume
 app.get("/accept/:id", async (req, res) => {
   const id = parseInt(req.params.id);
-  let pendingRequests = readRequests();
   const request = pendingRequests.find((r) => r.id === id);
-
   if (!request) return res.send("Request not found or already processed");
 
   try {
@@ -102,9 +77,7 @@ app.get("/accept/:id", async (req, res) => {
       ],
     });
 
-    // Remove processed request
     pendingRequests = pendingRequests.filter((r) => r.id !== id);
-    writeRequests(pendingRequests);
     res.send("✅ Resume sent to visitor successfully!");
   } catch (err) {
     console.error(err);
@@ -115,9 +88,7 @@ app.get("/accept/:id", async (req, res) => {
 // 🔹 Reject request → notify visitor
 app.get("/reject/:id", async (req, res) => {
   const id = parseInt(req.params.id);
-  let pendingRequests = readRequests();
   const request = pendingRequests.find((r) => r.id === id);
-
   if (!request) return res.send("Request not found or already processed");
 
   try {
@@ -130,9 +101,7 @@ app.get("/reject/:id", async (req, res) => {
              <p>Thanks for your interest!</p>`,
     });
 
-    // Remove processed request
     pendingRequests = pendingRequests.filter((r) => r.id !== id);
-    writeRequests(pendingRequests);
     res.send("❌ Resume request rejected and visitor notified.");
   } catch (err) {
     console.error(err);
@@ -142,7 +111,6 @@ app.get("/reject/:id", async (req, res) => {
 
 // 🔹 Pending requests API
 app.get("/pending-requests", (req, res) => {
-  const pendingRequests = readRequests();
   res.json(pendingRequests);
 });
 
